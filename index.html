@@ -7,7 +7,7 @@ function parseBlastSheet(rows){
 
   if(!rows || rows.length < 2) return blast;
 
-  // Find header row
+  // Find the header row
   let headerRowIdx = -1;
 
   for(let i = 0; i < rows.length; i++){
@@ -23,7 +23,7 @@ function parseBlastSheet(rows){
 
   if(headerRowIdx < 0) return blast;
 
-  // Identify columns
+  // Identify the columns
   const headers = rows[headerRowIdx].map(c =>
     String(c || '').trim().toLowerCase()
   );
@@ -38,7 +38,7 @@ function parseBlastSheet(rows){
 
   let inboundSum = 0;
 
-  // Read campaign rows
+  // Read each row after the headers
   for(let i = headerRowIdx + 1; i < rows.length; i++){
     const row = rows[i];
 
@@ -46,56 +46,60 @@ function parseBlastSheet(rows){
       ? String(row[ci.camp] || '').trim()
       : '';
 
-    // Check for TOTAL row
+    // Ignore completely blank rows
+    if(!name) continue;
+
+    // Handle TOTAL row separately
     if(name.toLowerCase() === 'total'){
 
-      // Period open rate comes from TOTAL row
+      // Get overall Open Rate from TOTAL row
       if(ci.open >= 0){
-        const v = String(row[ci.open] || '')
+        const value = String(row[ci.open] || '')
           .replace(/[%\s]/g, '');
 
-        if(v !== ''){
-          const parsed = parseFloat(v);
+        if(value !== ''){
+          const parsed = parseFloat(value);
+
           if(!isNaN(parsed)){
             blast.avgOpenRate = parsed;
           }
         }
       }
 
-      // Period new inbound comes from TOTAL row
+      // Get total New Inbound from TOTAL row
       if(ci.inbound >= 0){
-        const v = String(row[ci.inbound] || '')
+        const value = String(row[ci.inbound] || '')
           .replace(/[^0-9.-]/g, '');
 
-        if(v !== ''){
-          const parsed = parseInt(v, 10);
+        if(value !== ''){
+          const parsed = parseInt(value, 10);
+
           if(!isNaN(parsed)){
             blast.newInbound = parsed;
           }
         }
       }
 
-      // Do not show TOTAL as a campaign
+      // Do NOT add TOTAL as a campaign
       continue;
     }
 
-    // Ignore blank rows
-    if(!name) continue;
-
-    // Add inbound values in case there is no TOTAL row
+    // Add campaign New Inbound values together
+    // This is used as a fallback if there is no TOTAL row
     if(ci.inbound >= 0){
-      const v = String(row[ci.inbound] || '')
+      const value = String(row[ci.inbound] || '')
         .replace(/[^0-9.-]/g, '');
 
-      if(v !== ''){
-        const parsed = parseInt(v, 10);
+      if(value !== ''){
+        const parsed = parseInt(value, 10);
+
         if(!isNaN(parsed)){
           inboundSum += parsed;
         }
       }
     }
 
-    // Add campaign to dashboard table
+    // Add actual campaign to Recent Blast Performance
     blast.campaigns.push({
       name: name,
 
@@ -122,14 +126,14 @@ function parseBlastSheet(rows){
     });
   }
 
-  // If TOTAL New Inbound was not supplied,
-  // calculate it from the individual campaign rows
+  // If there is no TOTAL New Inbound value,
+  // use the sum of the individual campaigns
   if(blast.newInbound === null){
     blast.newInbound = inboundSum;
   }
 
-  // If TOTAL Open Rate was not supplied,
-  // calculate the average from the campaign rows
+  // If there is no TOTAL Open Rate,
+  // calculate the average of the campaign open rates
   if(blast.avgOpenRate === null && blast.campaigns.length > 0){
     blast.avgOpenRate = Math.round(
       blast.campaigns.reduce(
