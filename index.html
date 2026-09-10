@@ -1,147 +1,50 @@
 function parseBlastSheet(rows){
-  const blast = {
-    avgOpenRate: null,
-    newInbound: null,
-    campaigns: []
-  };
+  const blast = {avgOpenRate:null, newInbound:null, campaigns:[]};
+  if(!rows||rows.length<2) return blast;
 
-  if(!rows || rows.length < 2) return blast;
-
-  // Find the header row
   let headerRowIdx = -1;
-
-  for(let i = 0; i < rows.length; i++){
-    const row = rows[i].map(c =>
-      String(c || '').trim().toLowerCase()
-    );
-
-    if(row.some(c => c.includes('campaign'))){
-      headerRowIdx = i;
-      break;
-    }
+  for(let i=0;i<rows.length;i++){
+    const row = rows[i].map(c=>String(c||'').trim().toLowerCase());
+    if(row.some(c=>c.includes('campaign'))) { headerRowIdx=i; break; }
   }
+  if(headerRowIdx<0) return blast;
 
-  if(headerRowIdx < 0) return blast;
-
-  // Identify the columns
-  const headers = rows[headerRowIdx].map(c =>
-    String(c || '').trim().toLowerCase()
-  );
-
+  const headers = rows[headerRowIdx].map(c=>String(c||'').trim().toLowerCase());
   const ci = {
-    camp: headers.findIndex(h => h.includes('campaign')),
-    rec: headers.findIndex(h => h.includes('recipient')),
-    open: headers.findIndex(h => h.includes('open rate')),
-    inter: headers.findIndex(h => h.includes('interact')),
-    inbound: headers.findIndex(h => h.includes('inbound'))
+    camp:    headers.findIndex(h=>h.includes('campaign')),
+    rec:     headers.findIndex(h=>h.includes('recipient')),
+    open:    headers.findIndex(h=>h.includes('open rate')||h==='open rate'),
+    inter:   headers.findIndex(h=>h.includes('interact')),
+    avgOpen: headers.findIndex(h=>h.includes('average')||h.includes('avg open')),
+    inbound: headers.findIndex(h=>h.includes('inbound')||h.includes('organic')),
   };
 
-  let inboundSum = 0;
+  for(let i=headerRowIdx+1;i<rows.length;i++){
+    const row=rows[i];
+    const firstCell = String(row[0]||'').trim().toLowerCase();
+    const isTotalRow = firstCell === 'total';
+    const name=String(row[ci.camp]||'').trim();
 
-  // Read each row after the headers
-  for(let i = headerRowIdx + 1; i < rows.length; i++){
-    const row = rows[i];
+    if(isTotalRow){
+      // TOTAL row reuses the Open Rate column for the average, and the
+      // New Inbound column for the summed total — grab both from there.
+      const openCol = ci.avgOpen>=0 ? ci.avgOpen : ci.open;
+      const v=String(row[openCol]||'').replace(/[%\s]/g,'');
+      if(v) blast.avgOpenRate=parseFloat(v)||null;
 
-    const name = ci.camp >= 0
-      ? String(row[ci.camp] || '').trim()
-      : '';
+      const inboundV=String(row[ci.inbound]||'').replace(/[^0-9]/g,'');
+      if(inboundV) blast.newInbound=parseInt(inboundV)||null;
+      continue; // don't add the TOTAL row as a campaign
+    }
 
-    // Ignore completely blank rows
     if(!name) continue;
 
-    // Handle TOTAL row separately
-    if(name.toLowerCase() === 'total'){
-
-      // Get overall Open Rate from TOTAL row
-      if(ci.open >= 0){
-        const value = String(row[ci.open] || '')
-          .replace(/[%\s]/g, '');
-
-        if(value !== ''){
-          const parsed = parseFloat(value);
-
-          if(!isNaN(parsed)){
-            blast.avgOpenRate = parsed;
-          }
-        }
-      }
-
-      // Get total New Inbound from TOTAL row
-      if(ci.inbound >= 0){
-        const value = String(row[ci.inbound] || '')
-          .replace(/[^0-9.-]/g, '');
-
-        if(value !== ''){
-          const parsed = parseInt(value, 10);
-
-          if(!isNaN(parsed)){
-            blast.newInbound = parsed;
-          }
-        }
-      }
-
-      // Do NOT add TOTAL as a campaign
-      continue;
-    }
-
-    // Add campaign New Inbound values together
-    // This is used as a fallback if there is no TOTAL row
-    if(ci.inbound >= 0){
-      const value = String(row[ci.inbound] || '')
-        .replace(/[^0-9.-]/g, '');
-
-      if(value !== ''){
-        const parsed = parseInt(value, 10);
-
-        if(!isNaN(parsed)){
-          inboundSum += parsed;
-        }
-      }
-    }
-
-    // Add actual campaign to Recent Blast Performance
     blast.campaigns.push({
-      name: name,
-
-      recipients: ci.rec >= 0
-        ? parseInt(
-            String(row[ci.rec] || '0')
-              .replace(/[^0-9]/g, '')
-          ) || 0
-        : 0,
-
-      openRate: ci.open >= 0
-        ? parseFloat(
-            String(row[ci.open] || '0')
-              .replace(/[%\s]/g, '')
-          ) || 0
-        : 0,
-
-      interactionRate: ci.inter >= 0
-        ? parseFloat(
-            String(row[ci.inter] || '0')
-              .replace(/[%\s]/g, '')
-          ) || 0
-        : 0
+      name,
+      recipients:      parseInt(String(row[ci.rec]||'0').replace(/[^0-9]/g,''))||0,
+      openRate:        parseFloat(String(row[ci.open]||'0').replace(/[%\s]/g,''))||0,
+      interactionRate: parseFloat(String(row[ci.inter]||'0').replace(/[%\s]/g,''))||0,
     });
   }
-
-  // If there is no TOTAL New Inbound value,
-  // use the sum of the individual campaigns
-  if(blast.newInbound === null){
-    blast.newInbound = inboundSum;
-  }
-
-  // If there is no TOTAL Open Rate,
-  // calculate the average of the campaign open rates
-  if(blast.avgOpenRate === null && blast.campaigns.length > 0){
-    blast.avgOpenRate = Math.round(
-      blast.campaigns.reduce(
-        (sum, campaign) => sum + campaign.openRate,
-        0
-      ) / blast.campaigns.length
-    );
-  }
-
   return blast;
 }
