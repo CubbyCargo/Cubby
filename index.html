@@ -445,13 +445,9 @@ function handleFile(file){
 }
 
 function parseBlastSheet(rows){
-  // Layout: all one table with headers in row 0
-  // Columns: Campaign, Recipients, Open Rate, Interaction Rate, Average Open Rate, Organic Inbound
-  // Summary values (avg open rate, organic inbound) are in the FIRST data row only
   const blast = {avgOpenRate:null, newInbound:null, campaigns:[]};
   if(!rows||rows.length<2) return blast;
 
-  // Find header row
   let headerRowIdx = -1;
   for(let i=0;i<rows.length;i++){
     const row = rows[i].map(c=>String(c||'').trim().toLowerCase());
@@ -471,18 +467,23 @@ function parseBlastSheet(rows){
 
   for(let i=headerRowIdx+1;i<rows.length;i++){
     const row=rows[i];
+    const firstCell = String(row[0]||'').trim().toLowerCase();
+    const isTotalRow = firstCell === 'total';
     const name=String(row[ci.camp]||'').trim();
-    if(!name) continue;
 
-    // Pull summary values from first data row
-    if(blast.avgOpenRate===null && ci.avgOpen>=0){
-      const v=String(row[ci.avgOpen]||'').replace(/[%\s]/g,'');
+    if(isTotalRow){
+      // TOTAL row reuses the Open Rate column for the average, and the
+      // New Inbound column for the summed total — grab both from there.
+      const openCol = ci.avgOpen>=0 ? ci.avgOpen : ci.open;
+      const v=String(row[openCol]||'').replace(/[%\s]/g,'');
       if(v) blast.avgOpenRate=parseFloat(v)||null;
+
+      const inboundV=String(row[ci.inbound]||'').replace(/[^0-9]/g,'');
+      if(inboundV) blast.newInbound=parseInt(inboundV)||null;
+      continue; // don't add the TOTAL row as a campaign
     }
-    if(blast.newInbound===null && ci.inbound>=0){
-      const v=String(row[ci.inbound]||'').replace(/[^0-9]/g,'');
-      if(v) blast.newInbound=parseInt(v)||null;
-    }
+
+    if(!name) continue;
 
     blast.campaigns.push({
       name,
